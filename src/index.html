@@ -40,10 +40,6 @@
   #headline { font-size: 2em; color: #fff; margin: .6em 0 .2em; line-height: 1.2; }
   #headline.bad { color: #ff6b6b; }
 
-  #pair { margin: .6em 0 .4em; padding: 1em 1.2em; border: 1px solid #333; align-self: flex-start; }
-  #pair[hidden] { display: none; }
-  #pair .label { color: #888; }
-  #pair-code { display: block; font-size: 3.2em; letter-spacing: .12em; color: #fff; line-height: 1.2; margin-top: .1em; }
 
   #logbox { flex: 1; overflow: hidden; margin-top: .8em; min-height: 0; }
   #log div { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -94,7 +90,6 @@
 <div id="console">
   <div id="bar"><b>nscreen</b><span id="relays"></span></div>
   <div id="headline">Starting…</div>
-  <div id="pair" hidden><span class="label">Pairing code — check it matches on the publisher</span><span id="pair-code"></span></div>
   <div id="logbox"><div id="log"></div></div>
 </div>
 
@@ -104,13 +99,12 @@
     New keys are made in this browser and are never sent anywhere.</p>
 
   <div class="settings">
-    <div><label for="l-name">Screen name</label><input id="l-name" spellcheck="false"></div>
-    <div>
+    <div class="full">
       <label class="check"><input type="checkbox" id="l-custom"> Use custom relays</label>
       <input id="l-relays" spellcheck="false" placeholder="wss://relay.example.com, wss://relay2.example.com" hidden>
       <p class="note" id="l-relay-note"></p>
     </div>
-    <div class="full"><span class="note" style="margin:0">Changing these keeps the same keys.</span><button id="l-new">New keys</button></div>
+    <div class="full"><span class="note" style="margin:0">Changing relays keeps the same keys.</span><button id="l-new">New keys</button></div>
   </div>
 
   <section>

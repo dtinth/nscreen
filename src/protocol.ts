@@ -5,6 +5,9 @@ import { deflateSync, inflateSync } from 'fflate'
 /** Nostr kind for the event. NIP-78: addressable, application-specific data. */
 export const KIND = 30078
 
+/** `d` tag of every update. One publisher key drives exactly one screen. */
+export const D_TAG = 'nscreen'
+
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
@@ -143,24 +146,19 @@ function concat(...parts: Uint8Array[]) {
 }
 
 // ---------- display URL fragment ----------
-// #p=<publisher pubkey hex>&d=<d tag>&k=<receiver secret key b64url>&r=<relay>...
+// #p=<publisher pubkey hex>&k=<receiver secret key b64url>&r=<relay>...
 
 export interface ScreenAddress {
   pubkey: string
-  d: string
-  /**
-   * Receiver's secret key, if it's given in the URL. If it's missing, the display
-   * runs in pairing mode: it makes its own key and keeps it in localStorage.
-   */
-  key?: Uint8Array
+  /** Receiver's secret key. */
+  key: Uint8Array
   relays: string[]
 }
 
 export function encodeFragment(a: ScreenAddress): string {
   const q = new URLSearchParams()
   q.set('p', a.pubkey)
-  q.set('d', a.d)
-  if (a.key) q.set('k', toB64u(a.key))
+  q.set('k', toB64u(a.key))
   for (const r of a.relays) q.append('r', r)
   return q.toString()
 }
@@ -168,35 +166,18 @@ export function encodeFragment(a: ScreenAddress): string {
 export function decodeFragment(hash: string): ScreenAddress {
   const q = new URLSearchParams(hash.replace(/^#/, ''))
   const pubkey = q.get('p') ?? ''
-  const d = q.get('d') ?? ''
   const k = q.get('k') ?? ''
-  if (!/^[0-9a-f]{64}$/.test(pubkey) || !d) {
-    throw new Error('URL fragment must contain p (publisher pubkey) and d (screen name)')
+  if (!/^[0-9a-f]{64}$/.test(pubkey) || !k) {
+    throw new Error('URL fragment must contain p (publisher pubkey) and k (receiver key)')
   }
   const relays = q.getAll('r')
-  const key = k ? fromB64u(k) : undefined
-  if (key && key.length !== 32) throw new Error('k must be a 32-byte receiver key')
-  return { pubkey, d, key, relays: relays.length ? relays : DEFAULT_RELAYS }
-}
-
-// ---------- pairing ----------
-// In pairing mode the display announces its receiver public key as a signed
-// kind-30078 event (signed by the receiver key itself), tagged with the
-// publisher's pubkey. The publisher accepts it after a human checks that the
-// pairing code on the screen matches the one it computes.
-
-export const pairingDTag = (d: string) => `nscreen-pair:${d}`
-
-export async function pairingCode(publisherPub: string, d: string, receiverPub: string): Promise<string> {
-  const msg = new TextEncoder().encode(`nscreen-pair|${publisherPub}|${d}|${receiverPub}`)
-  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', msg))
-  const n = (((h[0]! << 24) | (h[1]! << 16) | (h[2]! << 8) | h[3]!) >>> 0) % 100_000_000
-  const s = String(n).padStart(8, '0')
-  return `${s.slice(0, 4)} ${s.slice(4)}`
+  const key = fromB64u(k)
+  if (key.length !== 32) throw new Error('k must be a 32-byte receiver key')
+  return { pubkey, key, relays: relays.length ? relays : DEFAULT_RELAYS }
 }
 
 // ---------- connection string (publisher side) ----------
-// nscreen:sk=<signing key hex>&to=<receiver pubkey hex>&d=<name>&r=<relay>...
+// nscreen:sk=<signing key hex>&to=<receiver pubkey hex>&r=<relay>...
 
 /**
  * Everything needed to publish to one screen. It can WRITE to the screen but
@@ -205,18 +186,15 @@ export async function pairingCode(publisherPub: string, d: string, receiverPub: 
 export interface PublisherCredentials {
   /** Nostr secret key (hex). Signs updates. */
   secretKey: string
-  /** Receiver's public key (hex, x-only). Missing until paired. */
-  recipient?: string
-  /** Screen name, used as the event's `d` tag. */
-  d: string
+  /** Receiver's public key (hex, x-only). */
+  recipient: string
   relays: string[]
 }
 
 export function toConnectionString(c: PublisherCredentials): string {
   const q = new URLSearchParams()
   q.set('sk', c.secretKey)
-  if (c.recipient) q.set('to', c.recipient)
-  q.set('d', c.d)
+  q.set('to', c.recipient)
   for (const r of c.relays) q.append('r', r)
   return `nscreen:${q}`
 }
@@ -225,10 +203,10 @@ export function parseConnectionString(s: string): PublisherCredentials {
   if (!s.startsWith('nscreen:')) throw new Error('Connection string must start with "nscreen:"')
   const q = new URLSearchParams(s.slice('nscreen:'.length).trim())
   const secretKey = q.get('sk') ?? ''
-  const recipient = q.get('to') ?? undefined
-  const d = q.get('d') ?? ''
-  if (!/^[0-9a-f]{64}$/.test(secretKey) || !d) throw new Error('Connection string needs sk and d')
-  if (recipient && !/^[0-9a-f]{64}$/.test(recipient)) throw new Error('Bad "to" in connection string')
+  const recipient = q.get('to') ?? ''
+  if (!/^[0-9a-f]{64}$/.test(secretKey) || !/^[0-9a-f]{64}$/.test(recipient)) {
+    throw new Error('Connection string needs sk and to')
+  }
   const relays = q.getAll('r')
-  return { secretKey, recipient, d, relays: relays.length ? relays : DEFAULT_RELAYS }
+  return { secretKey, recipient, relays: relays.length ? relays : DEFAULT_RELAYS }
 }

@@ -1,7 +1,6 @@
 // Minimal one-shot relay operations for the publisher side (Node 22+ or browser).
 // Each relay is independent: one that is down, slow or refusing never affects the others.
-import { verifyEvent, type Event } from 'nostr-tools/pure'
-import type { Filter } from 'nostr-tools/filter'
+import type { Event } from 'nostr-tools/pure'
 
 export interface RelayResult {
   url: string
@@ -39,27 +38,4 @@ export function publishToRelay(url: string, event: Event, timeoutMs = 8000): Pro
     ws.onerror = () => finish(false, 'connection failed')
     ws.onclose = () => finish(false, 'connection closed before OK')
   })
-}
-
-/**
- * Subscribe on several relays. Calls onEvent for each verified event.
- * Returns a function that closes everything.
- */
-export function subscribeRelays(urls: string[], filter: Filter, onEvent: (ev: Event) => void): () => void {
-  const sockets: WebSocket[] = []
-  for (const url of urls) {
-    try {
-      const ws = new WebSocket(url)
-      ws.onopen = () => ws.send(JSON.stringify(['REQ', 'nscreen', filter]))
-      ws.onmessage = (m) => {
-        try {
-          const [type, , ev] = JSON.parse(String(m.data))
-          if (type === 'EVENT' && verifyEvent(ev)) onEvent(ev)
-        } catch {}
-      }
-      ws.onerror = () => {}
-      sockets.push(ws)
-    } catch {}
-  }
-  return () => sockets.forEach((ws) => ws.close())
 }

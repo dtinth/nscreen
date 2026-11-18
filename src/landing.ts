@@ -7,12 +7,10 @@ import {
   encodeFragment,
   newSecretKey,
   publicKeyOf,
-  toB64u,
   toConnectionString,
 } from './protocol.ts'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
-const nameIn = $<HTMLInputElement>('l-name')
 const customIn = $<HTMLInputElement>('l-custom')
 const relaysIn = $<HTMLInputElement>('l-relays')
 const relayNote = $('l-relay-note')
@@ -55,26 +53,22 @@ let receiverKey: Uint8Array
 function newKeys() {
   signingKey = generateSecretKey()
   receiverKey = newSecretKey()
-  nameIn.value = `screen-${toB64u(crypto.getRandomValues(new Uint8Array(4)))}`
   update()
 }
 
 function update() {
-  const d = nameIn.value.trim() || 'screen'
   const relays = chosenRelays()
   const base = location.origin + location.pathname + location.search
-  const url = `${base}#${encodeFragment({ pubkey: getPublicKey(signingKey), d, key: receiverKey, relays })}`
+  const url = `${base}#${encodeFragment({ pubkey: getPublicKey(signingKey), key: receiverKey, relays })}`
   urlOut.value = url
   openLink.href = url
   connOut.value = toConnectionString({
     secretKey: bytesToHex(signingKey),
     recipient: bytesToHex(publicKeyOf(receiverKey)),
-    d,
     relays,
   })
 }
 
-nameIn.addEventListener('input', update)
 relaysIn.addEventListener('input', update)
 customIn.addEventListener('change', () => {
   update()

@@ -2,16 +2,14 @@
 // keeps relay connections open, decrypts, and morphs content into an iframe.
 // Until content arrives (and whenever every relay is down) it shows a
 // terminal-style console of what it's doing.
-import { finalizeEvent, verifyEvent, type Event } from 'nostr-tools/pure'
-import { bytesToHex, hexToBytes } from 'nostr-tools/utils'
+import { verifyEvent, type Event } from 'nostr-tools/pure'
+import { bytesToHex } from 'nostr-tools/utils'
 import { Idiomorph } from 'idiomorph'
 import {
   KIND,
   decodeFragment,
-  newSecretKey,
   openEnvelope,
-  pairingCode,
-  pairingDTag,
+  D_TAG,
   publicKeyOf,
   type Envelope,
 } from './protocol.ts'
@@ -22,7 +20,6 @@ const $ = (id: string) => document.getElementById(id)!
 const consoleEl = $('console')
 const logEl = $('log')
 const relaysEl = $('relays')
-const pairEl = $('pair')
 const headlineEl = $('headline')
 const logBox = $('logbox')
 const setHeadline = (text: string, tone: '' | 'bad' = '') => {
@@ -46,7 +43,7 @@ function trimLog() {
     logEl.firstElementChild!.remove()
   }
 }
-// Re-trim when the log area changes size (window resize, pairing box, headline).
+// Re-trim when the log area changes size (window resize, headline).
 if (typeof ResizeObserver === 'function') new ResizeObserver(trimLog).observe(logBox)
 else addEventListener('resize', trimLog)
 
@@ -92,10 +89,10 @@ try {
 } catch (e) {
   setHeadline('Invalid display URL', 'bad')
   log((e as Error).message, 'error')
-  log('expected: index.html#p=<publisher pubkey>&d=<screen name>[&k=<receiver key>][&r=<relay>...]', 'dim')
+  log('expected: index.html#p=<publisher pubkey>[&k=<receiver key>][&r=<relay>...]', 'dim')
   throw e
 }
-log(`screen "${addr.d}", publisher ${short(addr.pubkey)}`)
+log(`publisher ${short(addr.pubkey)}`)
 if (SAFE) log('safe mode: scripts will not run', 'warn')
 
 const store = {
@@ -116,41 +113,15 @@ const store = {
   },
 }
 
-// Receiver key: from the URL, or (pairing mode) made here and kept here.
-const PAIRING = !addr.key
-let receiverSk: Uint8Array
-if (addr.key) {
-  receiverSk = addr.key
-  log('receiver key: from URL')
-} else {
-  const KEY_ID = `nscreen:rx:${addr.pubkey}:${addr.d}`
-  const saved = store.get(KEY_ID)
-  if (saved && /^[0-9a-f]{64}$/.test(saved)) {
-    receiverSk = hexToBytes(saved)
-    log('receiver key: loaded from this device')
-  } else {
-    receiverSk = newSecretKey()
-    if (store.set(KEY_ID, bytesToHex(receiverSk))) log('receiver key: created and saved on this device')
-    else log('receiver key: created, but localStorage is unavailable — pairing is lost on reload', 'warn')
-  }
-}
+const receiverSk = addr.key
 const receiverPub = bytesToHex(publicKeyOf(receiverSk))
 log(`receiver pubkey ${short(receiverPub)}`, 'dim')
 
-let paired = false // becomes true once any update decrypts
-if (PAIRING) {
-  void pairingCode(addr.pubkey, addr.d, receiverPub).then((code) => {
-    if (paired) return
-    $('pair-code').textContent = code
-    pairEl.hidden = false
-    setHeadline('Waiting for pairing')
-    log(`pairing code ${code} — confirm it on the publisher`, 'ok')
-  })
-}
+let decrypted = false // becomes true once any update decrypts
 
 // ============================================================ rendering
 
-const CACHE_KEY = `nscreen:last:${addr.pubkey}:${addr.d}`
+const CACHE_KEY = `nscreen:last:${addr.pubkey}`
 const FRAME_DOC =
   '<!doctype html><html><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -220,34 +191,28 @@ async function apply(env: Envelope) {
     morph(env, true)
   }
   log(`rendered update #${env.seq}`, 'ok')
-  if (!rendered) {
-    rendered = true
-    pairEl.hidden = true
-  }
+  rendered = true
   if (consoleReason === 'boot') hideConsole()
 }
 
 async function handle(ev: Event, source: string) {
   if (ev.pubkey !== addr.pubkey || ev.kind !== KIND) return
-  if (!ev.tags.some((t) => t[0] === 'd' && t[1] === addr.d)) return
+  if (!ev.tags.some((t) => t[0] === 'd' && t[1] === D_TAG)) return
   if (ev.created_at < latest.createdAt) return
 
   let env: Envelope
   try {
     env = await openEnvelope(ev.content, receiverSk)
   } catch {
-    if (ev.created_at >= latest.createdAt && !paired) {
+    if (ev.created_at >= latest.createdAt && !decrypted) {
       log(`update ${ev.id.slice(0, 8)} from ${source} is not sealed to this receiver`, 'warn')
-      if (PAIRING) log('waiting for the publisher to pair with this screen', 'dim')
     }
     return
   }
   if (env.seq <= latest.seq) return
   latest = { createdAt: ev.created_at, seq: env.seq }
-  if (!paired) {
-    paired = true
-    if (PAIRING) log('paired with publisher', 'ok')
-    pairEl.hidden = true
+  if (!decrypted) {
+    decrypted = true
     setHeadline('Loading content…')
   }
   log(`update #${env.seq} from ${source} (${(ev.content.length / 1024).toFixed(1)} KB)`)
@@ -303,8 +268,7 @@ class RelayConn {
       if (this.ws !== ws) return
       this.retry = 0
       log(`${this.host}: connected, subscribing`)
-      this.send(['REQ', SUB, { kinds: [KIND], authors: [addr.pubkey], '#d': [addr.d], limit: 1 }])
-      if (PAIRING && !paired) void this.announce()
+      this.send(['REQ', SUB, { kinds: [KIND], authors: [addr.pubkey], '#d': [D_TAG], limit: 1 }])
       this.hbTimer = setInterval(() => this.heartbeat(), HEARTBEAT_MS)
     }
     ws.onmessage = (m) => {
@@ -346,30 +310,12 @@ class RelayConn {
 
   /** A dead socket can look open for minutes; a cheap REQ proves it's alive. */
   private heartbeat() {
-    this.send(['REQ', 'hb', { kinds: [KIND], authors: [addr.pubkey], '#d': [addr.d], limit: 0 }])
+    this.send(['REQ', 'hb', { kinds: [KIND], authors: [addr.pubkey], '#d': [D_TAG], limit: 0 }])
     clearTimeout(this.hbDeadline)
     this.hbDeadline = setTimeout(() => {
       log(`${this.host}: no heartbeat reply, reconnecting`, 'warn')
       this.lost()
     }, HEARTBEAT_TIMEOUT_MS)
-  }
-
-  /** Pairing mode: tell the publisher which key to seal updates to. */
-  async announce() {
-    const ev = finalizeEvent(
-      {
-        kind: KIND,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [
-          ['d', pairingDTag(addr.d)],
-          ['p', addr.pubkey],
-        ],
-        content: '',
-      },
-      receiverSk,
-    )
-    this.send(['EVENT', ev])
-    log(`${this.host}: sent pairing request`, 'dim')
   }
 
   /** Close everything and reconnect with backoff (1s, 2s, 4s … 30s). */
@@ -431,7 +377,7 @@ function onConnectivityChange() {
   if (live > 0) {
     clearTimeout(lostTimer)
     lostTimer = undefined
-    if (!rendered && !PAIRING) setHeadline('Connected — waiting for content…')
+    if (!rendered) setHeadline('Connected — waiting for content…')
     if (consoleReason === 'offline') {
       setHeadline('Reconnected')
       log(`back online (${live}/${conns.length} relays live)`, 'ok')
@@ -454,15 +400,7 @@ addEventListener('online', () => {
   conns.forEach((c) => c.reconnectNow())
 })
 
-// Pairing mode: re-announce every minute until the first update decrypts.
-if (PAIRING) {
-  const t = setInterval(() => {
-    if (paired) return clearInterval(t)
-    conns.forEach((c) => c.state === 'live' && void c.announce())
-  }, 60_000)
-}
-
-setHeadline(PAIRING && !paired ? 'Waiting for pairing' : 'Connecting…')
+setHeadline('Connecting…')
 renderRelays()
 conns.forEach((c) => c.connect())
 log(rendered ? 'showing cached content while connecting' : 'waiting for content…', 'dim')
