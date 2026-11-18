@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>nscreen</title>
+<style>
+  :root { --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; }
+  html, body { margin: 0; height: 100%; background: #000; }
+  body[data-mode="display"] { overflow: hidden; }
+  body:not([data-mode="display"]) #console,
+  body:not([data-mode="landing"]) #landing { display: none; }
+
+  /* ---------------- display ---------------- */
+  iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+
+  #console {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    background: #000; color: #c8c8c8;
+    font: clamp(12px, 1.4vw, 18px)/1.5 var(--mono);
+    padding: 1.2em 1.5em; box-sizing: border-box;
+    transition: opacity .4s ease, visibility 0s linear 0s;
+  }
+  #console.hidden { opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .4s ease, visibility 0s linear .4s; }
+
+  #bar { display: flex; flex-wrap: wrap; gap: .4em 1.2em; align-items: baseline;
+    padding-bottom: .6em; border-bottom: 1px solid #222; }
+  #bar b { color: #fff; font-weight: 600; }
+  #relays { display: contents; }
+  .relay::before { content: "●"; margin-right: .4em; }
+  .relay.connecting::before { color: #d9a300; animation: blink 1s steps(2) infinite; }
+  .relay.live::before { color: #3ecf5a; }
+  .relay.down::before { color: #e5484d; }
+  .relay.down { color: #777; }
+  @keyframes blink { 50% { opacity: .2; } }
+
+  #headline { font-size: 2em; color: #fff; margin: .6em 0 .2em; line-height: 1.2; }
+  #headline.bad { color: #ff6b6b; }
+
+  #pair { margin: .6em 0 .4em; padding: 1em 1.2em; border: 1px solid #333; align-self: flex-start; }
+  #pair[hidden] { display: none; }
+  #pair .label { color: #888; }
+  #pair-code { display: block; font-size: 3.2em; letter-spacing: .12em; color: #fff; line-height: 1.2; margin-top: .1em; }
+
+  #logbox { flex: 1; overflow: hidden; margin-top: .8em; min-height: 0; }
+  #log div { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #log .ok { color: #3ecf5a; }
+  #log .warn { color: #e2b93b; }
+  #log .error { color: #ff6b6b; }
+  #log .dim { color: #6b6b6b; }
+  #log div:last-child::after { content: "█"; margin-left: .3em; animation: blink 1s steps(2) infinite; color: #c8c8c8; }
+
+  /* ---------------- landing ---------------- */
+  #landing { max-width: 760px; margin: 0 auto; padding: 48px 24px 64px; color: #c8c8c8;
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #landing h1 { font: 600 28px/1.2 var(--mono); color: #fff; margin: 0 0 6px; }
+  #landing h1 span { color: #3ecf5a; }
+  #landing .lead { color: #8a8a8a; margin: 0 0 32px; }
+  #landing h2 { font-size: 15px; color: #fff; margin: 0 0 8px; display: flex; gap: 10px; align-items: center; }
+  #landing h2 i { font: 600 12px/22px var(--mono); font-style: normal; width: 22px; text-align: center;
+    border-radius: 50%; background: #1d3a24; color: #3ecf5a; }
+  #landing .note { color: #7a7a7a; font-size: 13px; margin: 6px 0 0; }
+  #landing section { margin: 0 0 28px; }
+  #landing label { display: block; font-size: 13px; color: #8a8a8a; margin: 0 0 4px; }
+  #landing input, #landing textarea {
+    width: 100%; box-sizing: border-box; background: #0d0d0d; color: #e6e6e6;
+    border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 12px;
+    font: 13px/1.5 var(--mono); resize: vertical; }
+  #landing input[readonly] { color: #b9e6c3; text-overflow: ellipsis; }
+  #landing input.bad { border-color: #e5484d; }
+  #landing label.check { display: flex; align-items: center; gap: 8px; color: #c8c8c8; font-size: 14px;
+    margin: 0 0 8px; cursor: pointer; padding-top: 2px; }
+  #landing label.check input { width: auto; margin: 0; accent-color: #3ecf5a; }
+  #landing .note.bad { color: #ff6b6b; }
+  #landing input:focus, #landing textarea:focus { outline: none; border-color: #3ecf5a; }
+  #landing .row { display: flex; gap: 8px; margin-top: 8px; }
+  #landing button, #landing a.btn {
+    font: 500 13px/1 system-ui, sans-serif; padding: 9px 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #2f2f2f; background: #161616; color: #e6e6e6; text-decoration: none; }
+  #landing button:hover, #landing a.btn:hover { border-color: #3ecf5a; }
+  #landing .settings { display: grid; grid-template-columns: 1fr 1.6fr; align-items: start; gap: 16px; margin: 0 0 32px;
+    padding: 16px; border: 1px solid #1f1f1f; border-radius: 8px; }
+  #landing .settings .full { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
+  #landing pre { background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 8px; padding: 14px 16px;
+    font: 13px/1.6 var(--mono); color: #c8c8c8; overflow: auto; margin: 0; }
+  #landing pre .c { color: #6b6b6b; }
+  @media (max-width: 600px) { #landing .settings { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="console">
+  <div id="bar"><b>nscreen</b><span id="relays"></span></div>
+  <div id="headline">Starting…</div>
+  <div id="pair" hidden><span class="label">Pairing code — check it matches on the publisher</span><span id="pair-code"></span></div>
+  <div id="logbox"><div id="log"></div></div>
+</div>
+
+<main id="landing">
+  <h1>nscreen<span>_</span></h1>
+  <p class="lead">Show HTML on a remote screen through Nostr relays. End-to-end encrypted, no backend.
+    New keys are made in this browser and are never sent anywhere.</p>
+
+  <div class="settings">
+    <div><label for="l-name">Screen name</label><input id="l-name" spellcheck="false"></div>
+    <div>
+      <label class="check"><input type="checkbox" id="l-custom"> Use custom relays</label>
+      <input id="l-relays" spellcheck="false" placeholder="wss://relay.example.com, wss://relay2.example.com" hidden>
+      <p class="note" id="l-relay-note"></p>
+    </div>
+    <div class="full"><span class="note" style="margin:0">Changing these keeps the same keys.</span><button id="l-new">New keys</button></div>
+  </div>
+
+  <section>
+    <h2><i>1</i>Display URL — open this on the screen</h2>
+    <input id="l-url" readonly spellcheck="false">
+    <div class="row"><button data-copy="l-url">Copy</button><a class="btn" id="l-open" target="_blank" rel="noopener">Open</a></div>
+    <p class="note">Holds the screen's secret key. Anyone with this URL can read what the screen shows.</p>
+  </section>
+
+  <section>
+    <h2><i>2</i>Connection string — give this to the publisher</h2>
+    <input id="l-conn" readonly spellcheck="false">
+    <div class="row"><button data-copy="l-conn">Copy</button></div>
+    <p class="note">Can update the screen but can't read it. Anyone with this string can change what's shown.</p>
+  </section>
+
+  <section>
+    <h2>Publish</h2>
+<pre><span class="c">// NSCREEN = the connection string above</span>
+const screen = new ScreenPublisher(process.env.NSCREEN)
+await screen.publish({
+  html: '&lt;h1&gt;Hello&lt;/h1&gt;',
+  css: 'h1 { color: tomato; view-transition-name: title }',
+})</pre>
+  </section>
+</main>
+
+<script type="module">/*__DISPLAY_JS__*/</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "nscreen",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@types/node": "^26.6.6",
+    "fflate": "^0.8.3",
+    "idiomorph": "^0.8.0",
+    "nostr-tools": "^2.26.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "type": "module"
+}
