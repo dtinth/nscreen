@@ -1,6 +1,6 @@
 {
   "name": "nscreen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Push HTML/CSS/JS to a remote screen through Nostr relays, end-to-end encrypted",
   "type": "module",
   "exports": {

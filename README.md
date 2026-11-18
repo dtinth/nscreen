@@ -30,6 +30,14 @@ await screen.publish({
 new ScreenPublisher(conn, { maxLength: 120_000 })
 ```
 
+### Expiring updates on relays
+
+```ts
+new ScreenPublisher(conn, { ttlSeconds: 3600 })
+```
+
+Each update gets a NIP-40 `expiration` tag, so relays that support it delete the update that many seconds after it's published. It's only about relay storage: screens that already received the update keep showing it (and keep it in their cache). A screen that connects after it expired gets nothing until the next update. The expiration time is visible to relays.
+
 Before sealing, the JSON is compressed with deflate (fflate), but only when that makes it smaller. Typical HTML/CSS shrinks to 15–35%, so 64 KB holds roughly 140 KB of varied markup, and much more if it's repetitive (tables, lists). Encryption and base64 then add about a third.
 
 Compression happens inside the encryption, so relays only see the compressed size. Don't publish attacker-controlled text next to secrets you care about: size changes can leak a little about the content (the CRIME/BREACH class of attacks). For a signage screen this rarely matters.

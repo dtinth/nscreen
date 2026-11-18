@@ -68,6 +68,13 @@ export const DEFAULT_MAX_LENGTH: number = 64 * 1024
 export interface PublisherOptions {
   /** Reject updates bigger than this many bytes. Default 64 KB. */
   maxLength?: number
+  /**
+   * Ask relays to delete each update this many seconds after it's published
+   * (NIP-40 `expiration` tag). Screens that already received it keep showing
+   * it; a screen that connects later gets nothing until the next update.
+   * Default: no expiration.
+   */
+  ttlSeconds?: number
 }
 
 /** Thrown by publish() when an update is over `maxLength`. Nothing is sent. */
@@ -98,10 +105,15 @@ export class ScreenPublisher {
 
   private creds: PublisherCredentials
   readonly maxLength: number
+  readonly ttlSeconds: number | undefined
 
   /** Takes a connection string ("nscreen:…") or a credentials object. */
   constructor(creds: string | PublisherCredentials, opts: PublisherOptions = {}) {
     this.maxLength = opts.maxLength ?? DEFAULT_MAX_LENGTH
+    if (opts.ttlSeconds !== undefined && !(opts.ttlSeconds > 0)) {
+      throw new RangeError('ttlSeconds must be a positive number')
+    }
+    this.ttlSeconds = opts.ttlSeconds
     this.creds = typeof creds === 'string' ? parseConnectionString(creds) : creds
     creds = this.creds
     this.sk = hexToBytes(creds.secretKey)
@@ -126,7 +138,10 @@ export class ScreenPublisher {
       {
         kind: KIND,
         created_at: createdAt,
-        tags: [['d', D_TAG]],
+        tags: [
+          ['d', D_TAG],
+          ...(this.ttlSeconds ? [['expiration', String(createdAt + Math.ceil(this.ttlSeconds))]] : []),
+        ],
         content: await sealEnvelope({ v: 1, seq, ...content }, this.recipient),
       },
       this.sk,
