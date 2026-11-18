@@ -63,7 +63,7 @@ export interface PublishResult {
  * whole ["EVENT", …] message, after compression, encryption and base64.
  * Many relays reject messages over 64–128 KB.
  */
-export const DEFAULT_MAX_LENGTH = 64 * 1024
+export const DEFAULT_MAX_LENGTH: number = 64 * 1024
 
 export interface PublisherOptions {
   /** Reject updates bigger than this many bytes. Default 64 KB. */
@@ -155,5 +155,5 @@ export class ScreenPublisher {
   }
 
   /** Kept for compatibility; each publish opens and closes its own connections. */
-  close() {}
+  close(): void {}
 }

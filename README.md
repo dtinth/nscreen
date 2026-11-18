@@ -1,13 +1,9 @@
 # nscreen
 
-Push HTML/CSS/JS to a remote screen through Nostr relays. End-to-end encrypted, no backend: one static `index.html` plus a small TypeScript publisher.
+Push HTML/CSS/JS to a remote screen through Nostr relays. End-to-end encrypted, no backend: one static `index.html` plus a small publisher library.
 
-```sh
-npm install
-npm run build        # → dist/index.html, one self-contained file (~64 KB)
-```
-
-Deploy `dist/index.html` anywhere static.
+- **Display:** use the hosted one at <https://nscreen.pages.dev/>, or deploy your own copy of `dist/index.html` anywhere static (it's also in the npm package as `nscreen/display.html`).
+- **Publisher:** `npm install nscreen` (Node 22+ or a browser).
 
 ## Quick start (landing page)
 
@@ -17,7 +13,7 @@ Open the deployed page **without** a `#fragment`. It generates new keys in your 
 2. **Connection string** (`nscreen:sk=…&to=…&r=…`): give it to the publisher. It can update the screen but can't read it.
 
 ```ts
-import { ScreenPublisher } from './src/publisher.ts'
+import { ScreenPublisher } from 'nscreen'
 
 const screen = new ScreenPublisher(process.env.NSCREEN!)   // the connection string
 await screen.publish({
@@ -45,6 +41,14 @@ npx tsx examples/setup.ts https://nscreen.pages.dev/
 ```
 
 It saves the publisher credentials to `publisher.json` and prints the display URL. In code, use `createScreen()`.
+
+## Development
+
+```sh
+npm install
+npm run build        # → dist/index.html (display, one self-contained file) and lib/ (publisher library)
+npm run typecheck
+```
 
 ## Keys
 

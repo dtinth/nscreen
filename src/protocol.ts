@@ -8,7 +8,7 @@ export const KIND = 30078
 /** `d` tag of every update. One publisher key drives exactly one screen. */
 export const D_TAG = 'nscreen'
 
-export const DEFAULT_RELAYS = [
+export const DEFAULT_RELAYS: string[] = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
